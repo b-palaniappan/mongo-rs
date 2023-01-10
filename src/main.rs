@@ -35,45 +35,57 @@ pub struct ApiError {
 // -- Error handing.
 #[derive(Debug, Display, Error)]
 enum MyError {
-    #[display(fmt = "internal error")]
+    #[display(fmt = "Internal server error")]
     InternalError,
 
-    #[display(fmt = "bad request")]
+    #[display(fmt = "Bad request")]
     BadClientData,
 
-    #[display(fmt = "timeout")]
-    Timeout,
+    #[display(fmt = "Not found")]
+    NotFound,
+}
+
+// Set Debug Error message
+impl MyError {
+    fn debug_message(&self) -> String {
+        match self {
+            MyError::InternalError => "Internal server error. Try again later.".to_owned(),
+            MyError::NotFound => "User not found for the given ID".to_owned(),
+            MyError::BadClientData => "Bad user data".to_owned(),
+        }
+    }
 }
 
 impl error::ResponseError for MyError {
     fn error_response(&self) -> HttpResponse {
-        HttpResponse::build(self.status_code())
-            .insert_header(ContentType::html())
-            .body(self.to_string())
+        HttpResponse::build(self.status_code()).json(ApiError {
+            status_code: self.status_code().as_u16(),
+            time: Utc::now().to_rfc3339_opts(SecondsFormat::Micros, true),
+            message: self.to_string(),
+            debug_message: Some(self.debug_message()),
+        })
     }
 
     fn status_code(&self) -> StatusCode {
         match *self {
             MyError::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
             MyError::BadClientData => StatusCode::BAD_REQUEST,
-            MyError::Timeout => StatusCode::GATEWAY_TIMEOUT,
+            MyError::NotFound => StatusCode::NOT_FOUND,
         }
     }
 }
 
 // -- Controllers
 #[post("/users")]
-async fn add_users(client: web::Data<Client>, new_user: Json<User>) -> HttpResponse {
+async fn add_users(
+    client: web::Data<Client>,
+    new_user: Json<User>,
+) -> Result<HttpResponse, MyError> {
     let collection = client.database(DB_NAME).collection(COLL_NAME);
     let result = collection.insert_one(new_user, None).await;
     match result {
-        Ok(user) => HttpResponse::Created().json(user.inserted_id),
-        Err(_) => HttpResponse::InternalServerError().json(ApiError {
-            status_code: 500,
-            time: Utc::now().to_rfc3339_opts(SecondsFormat::Micros, true),
-            message: "Internal server error".to_owned(),
-            debug_message: Some("Internal server error. Please try again later.".to_owned()),
-        }),
+        Ok(user) => Ok(HttpResponse::Created().json(user.inserted_id)),
+        Err(_) => Err(MyError::InternalError),
     }
 }
 
