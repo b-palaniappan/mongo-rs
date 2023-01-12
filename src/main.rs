@@ -1,6 +1,6 @@
 use actix_web::{
     error,
-    http::{header::ContentType, StatusCode},
+    http::StatusCode,
     post,
     web::{self, Json},
     App, HttpResponse, HttpServer,
@@ -45,18 +45,20 @@ enum MyError {
     NotFound,
 }
 
-// Set Debug Error message
+// Set Debug Error messages for Global error.
 impl MyError {
     fn debug_message(&self) -> String {
         match self {
-            MyError::InternalError => "Internal server error. Try again later.".to_owned(),
+            MyError::InternalError => "Internal server error. Please try again later.".to_owned(),
             MyError::NotFound => "User not found for the given ID".to_owned(),
             MyError::BadClientData => "Bad user data".to_owned(),
         }
     }
 }
 
+// Global error handling with actix-web ResponseError.
 impl error::ResponseError for MyError {
+    // Global error handler Http Response payload
     fn error_response(&self) -> HttpResponse {
         HttpResponse::build(self.status_code()).json(ApiError {
             status_code: self.status_code().as_u16(),
@@ -66,6 +68,7 @@ impl error::ResponseError for MyError {
         })
     }
 
+    // Global error handler status code. 
     fn status_code(&self) -> StatusCode {
         match *self {
             MyError::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
